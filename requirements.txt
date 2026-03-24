@@ -1,0 +1,10 @@
+streamlit
+pandas
+geopandas
+numpy
+pillow
+folium
+streamlit-folium
+mapreader==1.5.1
+torch
+torchvision
