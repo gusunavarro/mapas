@@ -269,11 +269,11 @@ with st.sidebar:
                 )
 
                total_samples = len(df_annot)
-min_samples_per_class = df_annot['label'].value_counts().min()
-if total_samples < 30 or min_samples_per_class < 5:
+    min_samples_per_class = df_annot['label'].value_counts().min()
+    if total_samples < 30 or min_samples_per_class < 5:
     st.info("Pocos datos o clases con pocas muestras: se usará 80% entrenamiento, 20% validación (sin test).")
     loader.create_datasets(frac_train=0.8, frac_val=0.2, frac_test=0.0)
-else:
+    else:
     loader.create_datasets(frac_train=0.7, frac_val=0.15, frac_test=0.15)
 
                 dataloaders = loader.create_dataloaders(batch_size=16)
