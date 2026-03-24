@@ -1,11 +1,11 @@
 streamlit
 pandas
 geopandas
-numpy
+numpy==1.26.4
 pillow
 folium
 streamlit-folium
 mapreader==1.5.1
 torch==2.2.2
 torchvision==0.17.2
-opencv-python
+opencv-python-headless
