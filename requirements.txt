@@ -8,4 +8,4 @@ streamlit-folium
 mapreader==1.5.1
 torch==2.2.2
 torchvision==0.17.2
-opencv-python-headless==4.5.5.64
+opencv-python-headless
