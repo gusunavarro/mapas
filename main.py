@@ -399,6 +399,13 @@ with col1:
     st.subheader("📋 Parches generados")
     if st.session_state.df_patches is not None:
         st.dataframe(st.session_state.df_patches.head(20))
+        csv_completo = st.session_state.df_patches.to_csv(index=False).encode('utf-8')
+st.download_button(
+    label="📥 Descargar lista completa de parches (CSV)",
+    data=csv_completo,
+    file_name="parches_completos.csv",
+    mime="text/csv"
+)
         if 'patch_id' in st.session_state.df_patches.columns:
             patch_ids = st.session_state.df_patches['patch_id'].tolist()
             selected_patch = st.selectbox("Selecciona un parche para ver", patch_ids[:50])
