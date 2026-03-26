@@ -50,7 +50,7 @@ if "map_names" not in st.session_state:
     st.session_state.map_names = []
 
 # -------------------------------------------------------------------
-# Funciones auxiliares (sin cambios)
+# Funciones auxiliares
 # -------------------------------------------------------------------
 def pixel_to_geo(pixel_x, pixel_y, gcps):
     if len(gcps) < 3:
@@ -277,6 +277,12 @@ with st.sidebar:
                 st.session_state.classifier.initialize_optimizer("adam")
                 st.session_state.classifier.train(num_epochs=epochs)
 
+                # ---- Verificación post-entrenamiento ----
+                st.write("🔍 **Verificación post-entrenamiento**")
+                st.write("st.session_state.classifier es None?", st.session_state.classifier is None)
+                if st.session_state.classifier is not None:
+                    st.write("Modelo cargado:", st.session_state.classifier.model is not None)
+
                 # Aseguramos que labels_map quede guardado
                 st.session_state.labels_map = loader.labels_map
             st.success("✅ Modelo entrenado.")
@@ -287,7 +293,17 @@ with st.sidebar:
     if st.session_state.classifier is not None:
         if st.button("🔍 Ejecutar predicción"):
             with st.spinner("Clasificando todos los parches..."):
+                # ---- Verificar que df_patches existe ----
+                if st.session_state.df_patches is None:
+                    st.error("No hay parches. Procesa el mapa primero.")
+                    st.stop()
+
                 image_paths = st.session_state.df_patches['image_path'].tolist()
+                st.write("🔍 **Verificación de datos de predicción**")
+                st.write("Número de image_paths:", len(image_paths))
+                if len(image_paths) == 0:
+                    st.error("No hay parches para predecir. ¿Procesaste el mapa?")
+                    st.stop()
 
                 transform = transforms.Compose([
                     transforms.Resize((224, 224)),
@@ -324,7 +340,13 @@ with st.sidebar:
                         all_probs.append(probs.cpu())
                         all_paths.extend(paths)
 
+                if len(all_probs) == 0:
+                    st.error("No se generaron probabilidades. El dataloader está vacío.")
+                    st.stop()
+
                 probs = torch.cat(all_probs, dim=0)
+                st.write("🔍 Forma de probs:", probs.shape)
+
                 pred_labels_idx = probs.argmax(dim=1).numpy()
                 pred_probs = probs.max(dim=1)[0].numpy()
 
@@ -332,6 +354,10 @@ with st.sidebar:
                 st.write("🔍 **Depuración predicción**")
                 st.write("Índices únicos predichos:", np.unique(pred_labels_idx))
                 st.write("Mapa de etiquetas guardado en st.session_state.labels_map:", st.session_state.labels_map)
+
+                if st.session_state.labels_map is None:
+                    st.error("El mapa de etiquetas es None. Reentrena el modelo.")
+                    st.stop()
 
                 idx_to_label = {v: k for k, v in st.session_state.labels_map.items()}
                 st.write("idx_to_label (índice → etiqueta):", idx_to_label)
@@ -420,7 +446,7 @@ with st.sidebar:
     st.info(f"📌 MapReader v{mapreader.__version__}")
 
 # -------------------------------------------------------------------
-# Área principal (sin cambios)
+# Área principal
 # -------------------------------------------------------------------
 col1, col2 = st.columns(2)
 
