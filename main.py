@@ -210,6 +210,7 @@ with st.sidebar:
         epochs = st.number_input("Número de épocas", min_value=1, max_value=50, value=5, step=1, key="epochs")
 
         if st.button("🚀 Entrenar clasificador"):
+            st.write("Labels map:", st.session_state.labels_map)
             try:
                 df_annot = pd.read_csv(st.session_state.annotations_file)
             except Exception as e:
