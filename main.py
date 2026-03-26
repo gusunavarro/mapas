@@ -43,7 +43,7 @@ if "classifier" not in st.session_state:
 if "labels_map" not in st.session_state:
     st.session_state.labels_map = None
 if "label_list" not in st.session_state:
-    st.session_state.label_list = None      # lista ordenada de etiquetas
+    st.session_state.label_list = None      # lista de etiquetas en orden
 if "predictions_df" not in st.session_state:
     st.session_state.predictions_df = None
 if "geojson_output" not in st.session_state:
@@ -170,11 +170,14 @@ with st.sidebar:
             if st.button("✏️ Crear anotaciones de demostración"):
                 num_samples = min(20, len(st.session_state.df_patches))
                 sample_df = st.session_state.df_patches.head(num_samples).copy()
+                # ETIQUETAS DE DEMOSTRACIÓN (texto)
                 labels = ["concesion", "limite", "fondo", "ferrocarril"]
                 sample_df['label'] = [labels[i % 4] for i in range(len(sample_df))]
                 csv_path = os.path.join(st.session_state.temp_dir, "anotaciones_demo.csv")
                 sample_df[['image_path', 'label']].to_csv(csv_path, index=False)
                 st.session_state.annotations_file = csv_path
+                # Guardar lista de etiquetas para la demostración
+                st.session_state.label_list = labels
                 st.success(f"Archivo de anotaciones de ejemplo creado ({len(sample_df)} parches).")
 
                 df_view = pd.read_csv(csv_path)
@@ -193,6 +196,8 @@ with st.sidebar:
                 df_view = pd.read_csv(csv_path)
                 st.subheader("Vista previa de las anotaciones")
                 st.dataframe(df_view)
+                # No guardamos label_list aquí porque aún no tenemos el dataframe completo;
+                # se hará en el entrenamiento.
     else:
         st.info("Primero carga y procesa mapas.")
 
@@ -223,11 +228,11 @@ with st.sidebar:
                 st.error("El archivo CSV debe contener una columna 'label' con las etiquetas.")
                 st.stop()
 
-            # ---- DEPURACIÓN CSV ----
-            st.write("🔍 **Depuración CSV**")
-            st.write("Primeras 3 filas del CSV cargado:")
-            st.dataframe(df_annot.head(3))
-            st.write("Clases únicas en 'label':", df_annot['label'].unique())
+            # ---- Obtener lista de etiquetas únicas (texto) ----
+            unique_labels = df_annot['label'].unique()
+            # Ordenar alfabéticamente para consistencia
+            st.session_state.label_list = sorted(unique_labels)
+            st.write("🔍 **Etiquetas únicas detectadas:**", st.session_state.label_list)
 
             # ---- Verificar que las rutas existen (primeras 10) ----
             missing = 0
@@ -247,22 +252,14 @@ with st.sidebar:
                     label_col="label"
                 )
 
-                st.write("🔍 **Depuración loader**")
-                st.write("loader.labels_map después de load:", loader.labels_map)
-
-                # ---- Crear manualmente el mapa de etiquetas si loader no lo hizo ----
+                # ---- Crear mapa de etiquetas a partir de la lista ordenada ----
+                st.session_state.labels_map = {label: i for i, label in enumerate(st.session_state.label_list)}
+                # Si loader ya tiene un mapa, lo usamos, pero si no, asignamos el nuestro
                 if loader.labels_map is None:
-                    unique_labels = df_annot['label'].unique()
-                    # Guardamos también la lista ordenada de etiquetas
-                    st.session_state.label_list = sorted(unique_labels)  # orden alfabético o como vengan
-                    st.session_state.labels_map = {label: i for i, label in enumerate(st.session_state.label_list)}
                     loader.labels_map = st.session_state.labels_map
-                    st.info(f"Mapa de etiquetas creado manualmente: {st.session_state.labels_map}")
                 else:
+                    # Si loader ya tiene mapa, nos aseguramos de que coincida (opcional)
                     st.session_state.labels_map = loader.labels_map
-                    # Extraer lista ordenada desde el mapa (claves son etiquetas)
-                    st.session_state.label_list = list(st.session_state.labels_map.keys())
-                    st.info(f"Mapa de etiquetas cargado desde loader: {st.session_state.labels_map}")
 
                 total_samples = len(df_annot)
                 min_samples_per_class = df_annot['label'].value_counts().min()
@@ -283,12 +280,6 @@ with st.sidebar:
                 st.session_state.classifier.initialize_optimizer("adam")
                 st.session_state.classifier.train(num_epochs=epochs)
 
-                # ---- Verificación post-entrenamiento ----
-                st.write("🔍 **Verificación post-entrenamiento**")
-                st.write("st.session_state.classifier es None?", st.session_state.classifier is None)
-                if st.session_state.classifier is not None:
-                    st.write("Modelo cargado:", st.session_state.classifier.model is not None)
-
             st.success("✅ Modelo entrenado.")
     else:
         st.info("Necesitas anotaciones primero (paso 2).")
@@ -297,7 +288,6 @@ with st.sidebar:
     if st.session_state.classifier is not None:
         if st.button("🔍 Ejecutar predicción"):
             with st.spinner("Clasificando todos los parches..."):
-                # ---- Verificar que df_patches existe ----
                 if st.session_state.df_patches is None:
                     st.error("No hay parches. Procesa el mapa primero.")
                     st.stop()
@@ -354,7 +344,7 @@ with st.sidebar:
                 pred_labels_idx = probs.argmax(dim=1).numpy()
                 pred_probs = probs.max(dim=1)[0].numpy()
 
-                # ---- CORRECCIÓN: construir idx_to_label a partir de label_list ----
+                # ---- Usar label_list para convertir índices a etiquetas de texto ----
                 if st.session_state.label_list is None:
                     st.error("No hay lista de etiquetas. Reentrena el modelo.")
                     st.stop()
@@ -370,7 +360,6 @@ with st.sidebar:
                     'probability': pred_probs
                 })
 
-                # ---- MOSTRAR PRIMERAS 10 PREDICCIONES ----
                 st.write("🔍 **Primeras predicciones**")
                 st.dataframe(predictions.head(10))
 
