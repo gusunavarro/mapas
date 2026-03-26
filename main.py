@@ -369,6 +369,11 @@ with st.sidebar:
                     'predicted_label': pred_labels,
                     'probability': pred_probs
                 })
+
+                # ---- MOSTRAR PRIMERAS 10 PREDICCIONES ----
+                st.write("🔍 **Primeras predicciones**")
+                st.dataframe(predictions.head(10))
+
                 st.session_state.predictions_df = predictions
             st.success(f"✅ Predicción completada. {len(predictions)} parches clasificados.")
     else:
