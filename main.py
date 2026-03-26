@@ -10,11 +10,9 @@ import json
 import zipfile
 from io import BytesIO
 
-# Librerías para mapas interactivos
 import folium
 from streamlit_folium import st_folium
 
-# MapReader y PyTorch
 import mapreader
 import torch
 import torchvision.transforms as transforms
@@ -23,7 +21,6 @@ from mapreader import MapImages
 from mapreader.classify.load_annotations import AnnotationsLoader
 from mapreader.classify.classifier import ClassifierContainer
 
-# Configuración de la página
 st.set_page_config(layout="wide", page_title="Análisis de Tierras en Patagonia")
 st.title("🗺️ Análisis de Asignación de Tierras en la Patagonia")
 st.markdown("Sube mapas históricos, anota parcelas, entrena un modelo y georreferencia los resultados con Allmaps.")
@@ -53,7 +50,7 @@ if "map_names" not in st.session_state:
     st.session_state.map_names = []
 
 # -------------------------------------------------------------------
-# Funciones auxiliares
+# Funciones auxiliares (sin cambios)
 # -------------------------------------------------------------------
 def pixel_to_geo(pixel_x, pixel_y, gcps):
     if len(gcps) < 3:
@@ -224,6 +221,12 @@ with st.sidebar:
                 st.error("El archivo CSV debe contener una columna 'label' con las etiquetas.")
                 st.stop()
 
+            # ---- DEPURACIÓN CSV ----
+            st.write("🔍 **Depuración CSV**")
+            st.write("Primeras 3 filas del CSV cargado:")
+            st.dataframe(df_annot.head(3))
+            st.write("Clases únicas en 'label':", df_annot['label'].unique())
+
             # ---- Verificar que las rutas existen (primeras 10) ----
             missing = 0
             for path in df_annot['image_path'].head(10):
@@ -242,6 +245,9 @@ with st.sidebar:
                     label_col="label"
                 )
 
+                st.write("🔍 **Depuración loader**")
+                st.write("loader.labels_map después de load:", loader.labels_map)
+
                 # ---- Crear manualmente el mapa de etiquetas si loader no lo hizo ----
                 if loader.labels_map is None:
                     unique_labels = df_annot['label'].unique()
@@ -254,7 +260,6 @@ with st.sidebar:
 
                 total_samples = len(df_annot)
                 min_samples_per_class = df_annot['label'].value_counts().min()
-                # --- AJUSTE: usar solo train/val si hay pocos datos o clases pequeñas ---
                 if total_samples < 30 or min_samples_per_class < 5:
                     st.info("Pocos datos o clases con pocas muestras: se usará 80% entrenamiento, 20% validación (sin test).")
                     loader.create_datasets(frac_train=0.8, frac_val=0.2, frac_test=0.0)
@@ -323,8 +328,14 @@ with st.sidebar:
                 pred_labels_idx = probs.argmax(dim=1).numpy()
                 pred_probs = probs.max(dim=1)[0].numpy()
 
-                # Usar el mapa de etiquetas guardado
+                # ---- DEPURACIÓN PREDICCIÓN ----
+                st.write("🔍 **Depuración predicción**")
+                st.write("Índices únicos predichos:", np.unique(pred_labels_idx))
+                st.write("Mapa de etiquetas guardado en st.session_state.labels_map:", st.session_state.labels_map)
+
                 idx_to_label = {v: k for k, v in st.session_state.labels_map.items()}
+                st.write("idx_to_label (índice → etiqueta):", idx_to_label)
+
                 pred_labels = [idx_to_label.get(idx, "desconocido") for idx in pred_labels_idx]
 
                 predictions = pd.DataFrame({
@@ -409,7 +420,7 @@ with st.sidebar:
     st.info(f"📌 MapReader v{mapreader.__version__}")
 
 # -------------------------------------------------------------------
-# Área principal (dos columnas)
+# Área principal (sin cambios)
 # -------------------------------------------------------------------
 col1, col2 = st.columns(2)
 
@@ -417,7 +428,6 @@ with col1:
     st.subheader("📋 Parches generados")
     if st.session_state.df_patches is not None:
         st.dataframe(st.session_state.df_patches.head(20))
-        # Botón para descargar CSV completo
         csv_completo = st.session_state.df_patches.to_csv(index=False).encode('utf-8')
         st.download_button(
             label="📥 Descargar lista completa de parches (CSV)",
@@ -486,9 +496,6 @@ with col2:
     else:
         st.info("Aún no hay predicciones. Ejecuta el paso 4 en el panel izquierdo.")
 
-# -------------------------------------------------------------------
-# Visualización con Folium
-# -------------------------------------------------------------------
 if st.session_state.geojson_output:
     st.subheader("🗺️ Mapa interactivo de resultados georreferenciados")
     features = st.session_state.geojson_output['features']
