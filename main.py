@@ -42,6 +42,8 @@ if "classifier" not in st.session_state:
     st.session_state.classifier = None
 if "labels_map" not in st.session_state:
     st.session_state.labels_map = None
+if "label_list" not in st.session_state:
+    st.session_state.label_list = None      # lista ordenada de etiquetas
 if "predictions_df" not in st.session_state:
     st.session_state.predictions_df = None
 if "geojson_output" not in st.session_state:
@@ -251,11 +253,15 @@ with st.sidebar:
                 # ---- Crear manualmente el mapa de etiquetas si loader no lo hizo ----
                 if loader.labels_map is None:
                     unique_labels = df_annot['label'].unique()
-                    st.session_state.labels_map = {label: i for i, label in enumerate(unique_labels)}
+                    # Guardamos también la lista ordenada de etiquetas
+                    st.session_state.label_list = sorted(unique_labels)  # orden alfabético o como vengan
+                    st.session_state.labels_map = {label: i for i, label in enumerate(st.session_state.label_list)}
                     loader.labels_map = st.session_state.labels_map
                     st.info(f"Mapa de etiquetas creado manualmente: {st.session_state.labels_map}")
                 else:
                     st.session_state.labels_map = loader.labels_map
+                    # Extraer lista ordenada desde el mapa (claves son etiquetas)
+                    st.session_state.label_list = list(st.session_state.labels_map.keys())
                     st.info(f"Mapa de etiquetas cargado desde loader: {st.session_state.labels_map}")
 
                 total_samples = len(df_annot)
@@ -283,8 +289,6 @@ with st.sidebar:
                 if st.session_state.classifier is not None:
                     st.write("Modelo cargado:", st.session_state.classifier.model is not None)
 
-                # Aseguramos que labels_map quede guardado
-                st.session_state.labels_map = loader.labels_map
             st.success("✅ Modelo entrenado.")
     else:
         st.info("Necesitas anotaciones primero (paso 2).")
@@ -350,17 +354,13 @@ with st.sidebar:
                 pred_labels_idx = probs.argmax(dim=1).numpy()
                 pred_probs = probs.max(dim=1)[0].numpy()
 
-                # ---- DEPURACIÓN PREDICCIÓN ----
-                st.write("🔍 **Depuración predicción**")
-                st.write("Índices únicos predichos:", np.unique(pred_labels_idx))
-                st.write("Mapa de etiquetas guardado en st.session_state.labels_map:", st.session_state.labels_map)
-
-                if st.session_state.labels_map is None:
-                    st.error("El mapa de etiquetas es None. Reentrena el modelo.")
+                # ---- CORRECCIÓN: construir idx_to_label a partir de label_list ----
+                if st.session_state.label_list is None:
+                    st.error("No hay lista de etiquetas. Reentrena el modelo.")
                     st.stop()
 
-                idx_to_label = {v: k for k, v in st.session_state.labels_map.items()}
-                st.write("idx_to_label (índice → etiqueta):", idx_to_label)
+                idx_to_label = {i: label for i, label in enumerate(st.session_state.label_list)}
+                st.write("🔍 idx_to_label (índice → etiqueta):", idx_to_label)
 
                 pred_labels = [idx_to_label.get(idx, "desconocido") for idx in pred_labels_idx]
 
@@ -442,6 +442,7 @@ with st.sidebar:
         st.session_state.annotations_file = None
         st.session_state.classifier = None
         st.session_state.labels_map = None
+        st.session_state.label_list = None
         st.session_state.predictions_df = None
         st.session_state.geojson_output = None
         st.session_state.map_names = []
