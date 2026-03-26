@@ -406,7 +406,7 @@ with col1:
     file_name="parches_completos.csv",
     mime="text/csv"
     )
-        if 'patch_id' in st.session_state.df_patches.columns:
+            if 'patch_id' in st.session_state.df_patches.columns:
             patch_ids = st.session_state.df_patches['patch_id'].tolist()
             selected_patch = st.selectbox("Selecciona un parche para ver", patch_ids[:50])
             if selected_patch:
