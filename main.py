@@ -210,7 +210,6 @@ with st.sidebar:
         epochs = st.number_input("Número de épocas", min_value=1, max_value=50, value=5, step=1, key="epochs")
 
         if st.button("🚀 Entrenar clasificador"):
-            st.write("Labels map:", st.session_state.labels_map)
             try:
                 df_annot = pd.read_csv(st.session_state.annotations_file)
             except Exception as e:
@@ -225,9 +224,15 @@ with st.sidebar:
                 st.error("El archivo CSV debe contener una columna 'label' con las etiquetas.")
                 st.stop()
 
-            min_samples_per_class = df_annot['label'].value_counts().min()
-            if min_samples_per_class < 2:
-                st.warning("Hay clases con muy pocas muestras. El entrenamiento puede fallar. Intenta aumentar el número de parches o reducir el tamaño del parche.")
+            # ---- Verificar que las rutas existen (primeras 10) ----
+            missing = 0
+            for path in df_annot['image_path'].head(10):
+                if not os.path.exists(path):
+                    st.warning(f"Ruta no encontrada: {path}")
+                    missing += 1
+            if missing:
+                st.error(f"⚠️ {missing} de las primeras 10 rutas no existen. Revisa que el mapa se haya procesado correctamente.")
+                st.stop()
 
             with st.spinner("Cargando anotaciones y entrenando (puede tomar varios minutos)..."):
                 loader = AnnotationsLoader()
@@ -236,6 +241,16 @@ with st.sidebar:
                     patch_paths_col="image_path",
                     label_col="label"
                 )
+
+                # ---- Crear manualmente el mapa de etiquetas si loader no lo hizo ----
+                if loader.labels_map is None:
+                    unique_labels = df_annot['label'].unique()
+                    st.session_state.labels_map = {label: i for i, label in enumerate(unique_labels)}
+                    loader.labels_map = st.session_state.labels_map
+                    st.info(f"Mapa de etiquetas creado manualmente: {st.session_state.labels_map}")
+                else:
+                    st.session_state.labels_map = loader.labels_map
+                    st.info(f"Mapa de etiquetas cargado desde loader: {st.session_state.labels_map}")
 
                 total_samples = len(df_annot)
                 min_samples_per_class = df_annot['label'].value_counts().min()
@@ -257,6 +272,7 @@ with st.sidebar:
                 st.session_state.classifier.initialize_optimizer("adam")
                 st.session_state.classifier.train(num_epochs=epochs)
 
+                # Aseguramos que labels_map quede guardado
                 st.session_state.labels_map = loader.labels_map
             st.success("✅ Modelo entrenado.")
     else:
@@ -307,6 +323,7 @@ with st.sidebar:
                 pred_labels_idx = probs.argmax(dim=1).numpy()
                 pred_probs = probs.max(dim=1)[0].numpy()
 
+                # Usar el mapa de etiquetas guardado
                 idx_to_label = {v: k for k, v in st.session_state.labels_map.items()}
                 pred_labels = [idx_to_label.get(idx, "desconocido") for idx in pred_labels_idx]
 
@@ -400,7 +417,7 @@ with col1:
     st.subheader("📋 Parches generados")
     if st.session_state.df_patches is not None:
         st.dataframe(st.session_state.df_patches.head(20))
-        # Botón para descargar CSV completo (¡AGREGADO!)
+        # Botón para descargar CSV completo
         csv_completo = st.session_state.df_patches.to_csv(index=False).encode('utf-8')
         st.download_button(
             label="📥 Descargar lista completa de parches (CSV)",
