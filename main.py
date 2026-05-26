@@ -1,20 +1,13 @@
 import os
 import sys
 import subprocess
-import pkg_resources
 
-# --- Forzar la reinstalación de opencv-python-headless ---
-installed_packages = {pkg.key for pkg in pkg_resources.working_set}
-target_pkg = 'opencv-python-headless'
+# Forzar la reinstalación de opencv-python-headless
+subprocess.check_call([sys.executable, "-m", "pip", "install", "opencv-python-headless==4.5.5.64", "--force-reinstall", "--no-deps"])
 
-# Si la versión headless no está instalada, o si está instalada otra versión de OpenCV, reinstalamos.
-if target_pkg not in installed_packages or any(pkg for pkg in installed_packages if 'opencv' in pkg and pkg != target_pkg):
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "opencv-python-headless==4.5.5.64", "--force-reinstall", "--no-deps"])
-    print("✅ opencv-python-headless reinstalado forzosamente.")
-else:
-    print("ℹ️ opencv-python-headless ya está instalado.")
-
-# Ahora importa el resto de tus librerías
+# Ahora importa el resto
+import streamlit as st
+# ... el resto de tu código ...
 import streamlit as st
 # ... el resto de tu código ...
 import streamlit as st
