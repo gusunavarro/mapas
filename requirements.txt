@@ -1,4 +1,4 @@
-opencv-python-headless==4.5.5.64
+opencv-python-headless==4.8.1.78
 numpy==1.26.4
 mapreader==1.5.1
 torch==2.2.2
