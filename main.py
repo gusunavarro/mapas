@@ -1,15 +1,3 @@
-import os
-import sys
-import subprocess
-
-# Forzar la reinstalación de opencv-python-headless
-subprocess.check_call([sys.executable, "-m", "pip", "install", "opencv-python-headless==4.5.5.64", "--force-reinstall", "--no-deps"])
-
-# Ahora importa el resto
-import streamlit as st
-# ... el resto de tu código ...
-import streamlit as st
-# ... el resto de tu código ...
 import streamlit as st
 import os
 import tempfile
@@ -36,8 +24,8 @@ from mapreader.classify.load_annotations import AnnotationsLoader
 from mapreader.classify.classifier import ClassifierContainer
 
 # Configuración de la página
-st.set_page_config(layout="wide", page_title="Análisis de Tierras en Patagonia, el caso de Tellier")
-st.title("🗺️ Análisis de Asignación de Tierras en la Patagonia,el caso de Tellier")
+st.set_page_config(layout="wide", page_title="Análisis de Tierras en Patagonia")
+st.title("🗺️ Análisis de Asignación de Tierras en la Patagonia")
 st.markdown("Sube mapas históricos, anota parcelas, entrena un modelo y georreferencia los resultados con Allmaps.")
 
 # -------------------------------------------------------------------
@@ -57,6 +45,8 @@ if "classifier" not in st.session_state:
     st.session_state.classifier = None
 if "labels_map" not in st.session_state:
     st.session_state.labels_map = None
+if "label_list" not in st.session_state:
+    st.session_state.label_list = None
 if "predictions_df" not in st.session_state:
     st.session_state.predictions_df = None
 if "geojson_output" not in st.session_state:
@@ -64,58 +54,39 @@ if "geojson_output" not in st.session_state:
 if "map_names" not in st.session_state:
     st.session_state.map_names = []
 
-
 # -------------------------------------------------------------------
 # Funciones auxiliares
 # -------------------------------------------------------------------
 def pixel_to_geo(pixel_x, pixel_y, gcps):
-    """
-    Convierte coordenadas de píxel a geográficas usando una transformación afín
-    con mínimos cuadrados. Retorna (lon, lat) o (None, None) si falla.
-    """
     if len(gcps) < 3:
-        st.warning("Se necesitan al menos 3 puntos de control.")
         return (None, None)
-
     n = len(gcps)
-    A = np.zeros((2 * n, 6))
-    B_lon = np.zeros(2 * n)
-    B_lat = np.zeros(2 * n)
-
+    A = np.zeros((2*n, 6))
+    B_lon = np.zeros(2*n)
+    B_lat = np.zeros(2*n)
     for i, gcp in enumerate(gcps):
         px, py = gcp['pixel']
         lon, lat = gcp['geo']
-        A[2 * i, 0] = px
-        A[2 * i, 1] = py
-        A[2 * i, 2] = 1
-        B_lon[2 * i] = lon
-        A[2 * i + 1, 3] = px
-        A[2 * i + 1, 4] = py
-        A[2 * i + 1, 5] = 1
-        B_lat[2 * i + 1] = lat
-
+        A[2*i, 0] = px
+        A[2*i, 1] = py
+        A[2*i, 2] = 1
+        B_lon[2*i] = lon
+        A[2*i+1, 3] = px
+        A[2*i+1, 4] = py
+        A[2*i+1, 5] = 1
+        B_lat[2*i+1] = lat
     try:
         coeffs_lon, _, _, _ = np.linalg.lstsq(A, B_lon, rcond=1e-6)
         coeffs_lat, _, _, _ = np.linalg.lstsq(A, B_lat, rcond=1e-6)
-    except np.linalg.LinAlgError as e:
-        st.warning(f"Error en la solución de mínimos cuadrados: {e}")
+    except np.linalg.LinAlgError:
         return (None, None)
-
-    lon = coeffs_lon[0] * pixel_x + coeffs_lon[1] * pixel_y + coeffs_lon[2]
-    lat = coeffs_lat[3] * pixel_x + coeffs_lat[4] * pixel_y + coeffs_lat[5]
-
+    lon = coeffs_lon[0]*pixel_x + coeffs_lon[1]*pixel_y + coeffs_lon[2]
+    lat = coeffs_lat[3]*pixel_x + coeffs_lat[4]*pixel_y + coeffs_lat[5]
     if lon < -180 or lon > 180 or lat < -90 or lat > 90:
-        st.warning(f"Coordenadas fuera de rango: lon={lon}, lat={lat}")
         return (None, None)
-
     return (lon, lat)
 
-
 def parse_allmaps_manifest(manifest_json):
-    """
-    Extrae los GCPs del manifiesto de Allmaps (formato actual).
-    Soporta tanto AnnotationPage como la anotación directa.
-    """
     gcps = []
     try:
         items = manifest_json.get("items", [])
@@ -123,7 +94,6 @@ def parse_allmaps_manifest(manifest_json):
             annotation = items[0]
         else:
             annotation = manifest_json
-
         body = annotation.get("body", {})
         if body.get("type") == "FeatureCollection":
             features = body.get("features", [])
@@ -132,7 +102,6 @@ def parse_allmaps_manifest(manifest_json):
                 geom = feature.get("geometry", {})
                 resource_coords = props.get("resourceCoords", [])
                 geo_coords = geom.get("coordinates", [])
-
                 if resource_coords and len(resource_coords) == 2 and geo_coords and len(geo_coords) == 2:
                     gcps.append({
                         "pixel": (resource_coords[0], resource_coords[1]),
@@ -141,7 +110,6 @@ def parse_allmaps_manifest(manifest_json):
     except Exception as e:
         st.warning(f"Error al parsear el manifiesto: {e}")
     return gcps
-
 
 # -------------------------------------------------------------------
 # Sidebar
@@ -154,8 +122,7 @@ with st.sidebar:
         accept_multiple_files=True
     )
 
-    patch_size = st.slider("Tamaño del parche (px) - Recomendado 200-300 para más muestras", 100, 1000, 200,
-                           key="patch_slider")
+    patch_size = st.slider("Tamaño del parche (px) - Recomendado 200-300 para más muestras", 100, 1000, 200, key="patch_slider")
 
     if uploaded_files and st.button("📥 Procesar mapas (generar parches)"):
         nombres_mapas = []
@@ -198,14 +165,6 @@ with st.sidebar:
         st.success(f"✅ Se generaron {len(st.session_state.df_patches)} parches.")
         st.write("Columnas del DataFrame:", st.session_state.df_patches.columns.tolist())
 
-        csv_completo = st.session_state.df_patches.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="📥 Descargar lista completa de parches (CSV)",
-            data=csv_completo,
-            file_name="parches_completos.csv",
-            mime="text/csv"
-        )
-
     st.header("2. Anotaciones")
     if st.session_state.df_patches is not None:
         opcion_anot = st.radio("Tipo de anotación", ["Usar demostración", "Subir mi propio CSV"])
@@ -219,6 +178,7 @@ with st.sidebar:
                 csv_path = os.path.join(st.session_state.temp_dir, "anotaciones_demo.csv")
                 sample_df[['image_path', 'label']].to_csv(csv_path, index=False)
                 st.session_state.annotations_file = csv_path
+                st.session_state.label_list = labels  # Guardar lista de etiquetas
                 st.success(f"Archivo de anotaciones de ejemplo creado ({len(sample_df)} parches).")
 
                 df_view = pd.read_csv(csv_path)
@@ -237,6 +197,7 @@ with st.sidebar:
                 df_view = pd.read_csv(csv_path)
                 st.subheader("Vista previa de las anotaciones")
                 st.dataframe(df_view)
+                # label_list se establecerá en el entrenamiento
     else:
         st.info("Primero carga y procesa mapas.")
 
@@ -267,10 +228,20 @@ with st.sidebar:
                 st.error("El archivo CSV debe contener una columna 'label' con las etiquetas.")
                 st.stop()
 
-            min_samples_per_class = df_annot['label'].value_counts().min()
-            if min_samples_per_class < 2:
-                st.warning(
-                    "Hay clases con muy pocas muestras. El entrenamiento puede fallar. Intenta aumentar el número de parches o reducir el tamaño del parche.")
+            # Detectar etiquetas únicas (texto) y guardar lista ordenada
+            unique_labels = sorted(df_annot['label'].unique())
+            st.session_state.label_list = unique_labels
+            st.write("🔍 **Etiquetas detectadas:**", st.session_state.label_list)
+
+            # Verificar rutas
+            missing = 0
+            for path in df_annot['image_path'].head(10):
+                if not os.path.exists(path):
+                    st.warning(f"Ruta no encontrada: {path}")
+                    missing += 1
+            if missing:
+                st.error(f"⚠️ {missing} de las primeras 10 rutas no existen. Revisa que el mapa se haya procesado correctamente.")
+                st.stop()
 
             with st.spinner("Cargando anotaciones y entrenando (puede tomar varios minutos)..."):
                 loader = AnnotationsLoader()
@@ -280,9 +251,14 @@ with st.sidebar:
                     label_col="label"
                 )
 
+                # Construir mapa de etiquetas (texto -> índice)
+                st.session_state.labels_map = {label: i for i, label in enumerate(st.session_state.label_list)}
+                loader.labels_map = st.session_state.labels_map
+
                 total_samples = len(df_annot)
-                if total_samples < 30:
-                    st.info("Pocos datos: se usará 80% entrenamiento, 20% validación (sin test).")
+                min_samples_per_class = df_annot['label'].value_counts().min()
+                if total_samples < 30 or min_samples_per_class < 5:
+                    st.info("Pocos datos o clases con pocas muestras: se usará 80% entrenamiento, 20% validación (sin test).")
                     loader.create_datasets(frac_train=0.8, frac_val=0.2, frac_test=0.0)
                 else:
                     loader.create_datasets(frac_train=0.7, frac_val=0.15, frac_test=0.15)
@@ -298,8 +274,6 @@ with st.sidebar:
                 st.session_state.classifier.initialize_optimizer("adam")
                 st.session_state.classifier.train(num_epochs=epochs)
 
-                # Guardar el mapa de etiquetas para usarlo en predicción
-                st.session_state.labels_map = loader.labels_map
             st.success("✅ Modelo entrenado.")
     else:
         st.info("Necesitas anotaciones primero (paso 2).")
@@ -308,35 +282,31 @@ with st.sidebar:
     if st.session_state.classifier is not None:
         if st.button("🔍 Ejecutar predicción"):
             with st.spinner("Clasificando todos los parches..."):
-                # Obtener lista de rutas de imágenes desde el DataFrame
-                image_paths = st.session_state.df_patches['image_path'].tolist()
+                if st.session_state.df_patches is None:
+                    st.error("No hay parches. Procesa el mapa primero.")
+                    st.stop()
 
-                # Definir transformaciones (deben coincidir con las usadas en entrenamiento)
+                image_paths = st.session_state.df_patches['image_path'].tolist()
                 transform = transforms.Compose([
                     transforms.Resize((224, 224)),
                     transforms.ToTensor(),
                     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
                 ])
 
-
                 class PatchDataset(Dataset):
                     def __init__(self, paths, transform):
                         self.paths = paths
                         self.transform = transform
-
                     def __len__(self):
                         return len(self.paths)
-
                     def __getitem__(self, idx):
                         img = Image.open(self.paths[idx]).convert('RGB')
                         img = self.transform(img)
                         return img, self.paths[idx]
 
-
                 dataset = PatchDataset(image_paths, transform)
                 dataloader = DataLoader(dataset, batch_size=32, shuffle=False)
 
-                # Obtener el modelo del clasificador
                 model = st.session_state.classifier.model
                 model.eval()
                 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -352,27 +322,21 @@ with st.sidebar:
                         all_probs.append(probs.cpu())
                         all_paths.extend(paths)
 
+                if not all_probs:
+                    st.error("No se generaron probabilidades. El dataloader está vacío.")
+                    st.stop()
+
                 probs = torch.cat(all_probs, dim=0)
                 pred_labels_idx = probs.argmax(dim=1).numpy()
                 pred_probs = probs.max(dim=1)[0].numpy()
 
-                # Verificar el mapeo de etiquetas
-                labels_map = st.session_state.labels_map
-                # Invertir: índice -> etiqueta
-                idx_to_label = {v: k for k, v in labels_map.items()}
-                st.write("**Mapeo de etiquetas (índice -> etiqueta):**", idx_to_label)
+                # Convertir índices a etiquetas usando label_list
+                if st.session_state.label_list is None:
+                    st.error("No hay lista de etiquetas. Reentrena el modelo.")
+                    st.stop()
+                idx_to_label = {i: label for i, label in enumerate(st.session_state.label_list)}
+                pred_labels = [idx_to_label.get(idx, "desconocido") for idx in pred_labels_idx]
 
-                # Convertir índices a etiquetas, manejando posibles errores
-                pred_labels = []
-                for idx in pred_labels_idx:
-                    if idx in idx_to_label:
-                        pred_labels.append(idx_to_label[idx])
-                    else:
-                        st.warning(
-                            f"Índice de clase {idx} no encontrado en el mapa de etiquetas. Se asignará 'desconocido'.")
-                        pred_labels.append("desconocido")
-
-                # Crear DataFrame de predicciones (solo con image_path)
                 predictions = pd.DataFrame({
                     'image_path': all_paths,
                     'predicted_label': pred_labels,
@@ -396,74 +360,43 @@ with st.sidebar:
             manifest = json.load(manifest_file)
             gcps = parse_allmaps_manifest(manifest)
 
-            # Depuración: mostrar GCPs encontrados
-            st.write(f"**Número de GCPs encontrados:** {len(gcps)}")
-            if gcps:
-                st.write("**Primeros GCPs (muestra):**")
-                for i, gcp in enumerate(gcps[:3]):
-                    st.write(f"  GCP {i + 1}: píxel {gcp['pixel']} → geo {gcp['geo']}")
-            else:
-                st.error("No se encontraron puntos de control en el manifiesto.")
-                st.stop()
-
             if len(gcps) < 3:
-                st.error("Se necesitan al menos 3 puntos de control para una transformación afín.")
-                st.stop()
-
-            # Verificar que df_patches tenga las columnas necesarias
-            needed_cols = ['image_path', 'parent_id', 'min_x', 'min_y']
-            missing = [col for col in needed_cols if col not in st.session_state.df_patches.columns]
-            if missing:
-                st.error(f"El DataFrame de parches no tiene las columnas: {missing}")
-                st.stop()
-
-            # Fusionar predicciones con df_patches usando image_path
-            merged = st.session_state.predictions_df.merge(
-                st.session_state.df_patches[needed_cols],
-                on='image_path',
-                how='inner'
-            )
-            st.write(f"Total de filas después del merge: {len(merged)}")
-
-            # Filtrar por el mapa seleccionado (coincidencia parcial del nombre)
-            preds_filt = merged[merged['parent_id'].str.contains(mapa_seleccionado.split('.')[0], na=False)]
-            st.write(f"Filas después de filtrar por mapa: {len(preds_filt)}")
-
-            if len(preds_filt) == 0:
-                st.warning("No hay parches para el mapa seleccionado.")
-                st.stop()
-
-            # Probar la transformación con el primer parche
-            try:
-                test_lon, test_lat = pixel_to_geo(preds_filt.iloc[0]['min_x'], preds_filt.iloc[0]['min_y'], gcps)
-                st.write(f"**Prueba de transformación para el primer parche:**")
-                st.write(
-                    f"  Píxel: ({preds_filt.iloc[0]['min_x']}, {preds_filt.iloc[0]['min_y']}) → Geo: ({test_lon}, {test_lat})")
-            except Exception as e:
-                st.warning(f"Error en la prueba de transformación: {e}")
-
-            # Transformar todos los puntos
-            features = []
-            for _, row in preds_filt.iterrows():
-                lon, lat = pixel_to_geo(row['min_x'], row['min_y'], gcps)
-                if lon is not None and lat is not None:
-                    feature = {
-                        "type": "Feature",
-                        "geometry": {"type": "Point", "coordinates": [lon, lat]},
-                        "properties": {
-                            "image_path": row['image_path'],
-                            "predicted_label": row['predicted_label'],
-                            "probability": row['probability']
-                        }
-                    }
-                    features.append(feature)
-
-            if features:
-                geojson = {"type": "FeatureCollection", "features": features}
-                st.session_state.geojson_output = geojson
-                st.success(f"GeoJSON generado con {len(features)} puntos para el mapa {mapa_seleccionado}.")
+                st.error("El manifiesto no contiene suficientes puntos de control (necesita al menos 3).")
             else:
-                st.warning("No se pudo transformar ningún punto. Verifica los GCPs o las predicciones.")
+                needed_cols = ['image_path', 'parent_id', 'min_x', 'min_y']
+                missing = [col for col in needed_cols if col not in st.session_state.df_patches.columns]
+                if not missing:
+                    merged = st.session_state.predictions_df.merge(
+                        st.session_state.df_patches[needed_cols],
+                        on='image_path',
+                        how='inner'
+                    )
+                    preds_filt = merged[merged['parent_id'].str.contains(mapa_seleccionado.split('.')[0], na=False)]
+                else:
+                    st.error(f"El DataFrame de parches no tiene las columnas: {missing}")
+                    preds_filt = pd.DataFrame()
+
+                features = []
+                for _, row in preds_filt.iterrows():
+                    lon, lat = pixel_to_geo(row['min_x'], row['min_y'], gcps)
+                    if lon is not None and lat is not None:
+                        feature = {
+                            "type": "Feature",
+                            "geometry": {"type": "Point", "coordinates": [lon, lat]},
+                            "properties": {
+                                "image_path": row['image_path'],
+                                "predicted_label": row['predicted_label'],
+                                "probability": row['probability']
+                            }
+                        }
+                        features.append(feature)
+
+                if features:
+                    geojson = {"type": "FeatureCollection", "features": features}
+                    st.session_state.geojson_output = geojson
+                    st.success(f"GeoJSON generado con {len(features)} puntos para el mapa {mapa_seleccionado}.")
+                else:
+                    st.warning("No se pudo transformar ningún punto. Verifica los GCPs o las predicciones.")
     else:
         st.info("Primero ejecuta una predicción (paso 4).")
 
@@ -477,6 +410,7 @@ with st.sidebar:
         st.session_state.annotations_file = None
         st.session_state.classifier = None
         st.session_state.labels_map = None
+        st.session_state.label_list = None
         st.session_state.predictions_df = None
         st.session_state.geojson_output = None
         st.session_state.map_names = []
@@ -494,6 +428,13 @@ with col1:
     st.subheader("📋 Parches generados")
     if st.session_state.df_patches is not None:
         st.dataframe(st.session_state.df_patches.head(20))
+        csv_completo = st.session_state.df_patches.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="📥 Descargar lista completa de parches (CSV)",
+            data=csv_completo,
+            file_name="parches_completos.csv",
+            mime="text/csv"
+        )
         if 'patch_id' in st.session_state.df_patches.columns:
             patch_ids = st.session_state.df_patches['patch_id'].tolist()
             selected_patch = st.selectbox("Selecciona un parche para ver", patch_ids[:50])
@@ -541,20 +482,15 @@ with col2:
         with col_exp3:
             if st.session_state.geojson_output and len(st.session_state.geojson_output['features']) > 0:
                 gdf = gpd.GeoDataFrame.from_features(st.session_state.geojson_output['features'])
-                # Establecer CRS a WGS84 para que se genere el archivo .prj
                 gdf.set_crs(epsg=4326, inplace=True)
                 zip_buffer = BytesIO()
                 with zipfile.ZipFile(zip_buffer, 'a', zipfile.ZIP_DEFLATED) as zf:
-                    # Guardar shapefile en un directorio temporal
                     temp_shp = os.path.join(st.session_state.temp_dir, "temp.shp")
                     gdf.to_file(temp_shp, driver='ESRI Shapefile')
-                    # Añadir cada archivo del shapefile al zip, solo si existe
                     for ext in ['.shp', '.shx', '.dbf', '.prj']:
                         file_path = temp_shp.replace('.shp', ext)
                         if os.path.exists(file_path):
                             zf.write(file_path, arcname=f"resultados{ext}")
-                        else:
-                            st.warning(f"No se encontró el archivo {ext}, se omitirá.")
                 zip_buffer.seek(0)
                 st.download_button("📦 Shapefile", zip_buffer, "resultados_shapefile.zip", "application/zip")
     else:
@@ -578,8 +514,7 @@ if st.session_state.geojson_output:
                     label = f['properties']['predicted_label']
                     prob = f['properties']['probability']
                     popup = f"<b>Etiqueta:</b> {label}<br><b>Prob:</b> {prob:.2f}"
-                    color = {'concesion': 'red', 'limite': 'blue', 'ferrocarril': 'green', 'fondo': 'gray'}.get(label,
-                                                                                                                'gray')
+                    color = {'concesion':'red', 'limite':'blue', 'ferrocarril':'green', 'fondo':'gray'}.get(label, 'gray')
                     folium.CircleMarker(
                         [lat, lon],
                         radius=5,
