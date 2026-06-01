@@ -1,4 +1,5 @@
 streamlit
+streamlit-folium
 mapreader
 opencv-python-headless
 torch
@@ -10,5 +11,3 @@ folium
 Pillow
 matplotlib
 scikit-learn
-folium
-streamlit-folium
