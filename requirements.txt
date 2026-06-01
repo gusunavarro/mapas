@@ -10,3 +10,5 @@ folium
 Pillow
 matplotlib
 scikit-learn
+folium
+streamlit-folium
